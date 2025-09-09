@@ -236,15 +236,7 @@
         padding: 1rem;
     }
 
-    /* Mobile sidebar */
-    .mobile-sidebar {
-        width: 100%;
-        left: -100%;
-    }
 
-    .mobile-sidebar.active {
-        left: 0;
-    }
 
     /* Navigation */
     .navbar-brand {
