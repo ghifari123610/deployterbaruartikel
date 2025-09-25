@@ -5,6 +5,26 @@ document.addEventListener('DOMContentLoaded', async function() {
     const urlParams = new URLSearchParams(window.location.search);
     const tag = urlParams.get('tag');
 
+    // API Configuration
+    const API_BASE_URL = 'https://santri.pondokinformatika.id/api/get/news';
+
+    // Helper function to safely get nested property or fallback
+    function safeGet(obj, path, fallback = '') {
+        return path.split('.').reduce((acc, part) => acc && acc[part], obj) || fallback;
+    }
+
+    // Show loading state
+    mainContent.innerHTML = `
+        <div class="container py-4">
+            <div class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Memuat artikel kategori...</p>
+            </div>
+        </div>
+    `;
+
     if (!tag || !tag.trim()) {
         mainContent.innerHTML = `
             <div class="container py-4">
@@ -20,22 +40,70 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     try {
-        // Fetch articles from API
-        const response = await fetch('https://santri.pondokinformatika.id/api/get/news');
-        if (!response.ok) throw new Error('Network response was not ok');
+        // Fetch articles from API for accurate category filtering
+        console.log('Fetching articles from API for tag filtering...');
+        console.log('Tag parameter:', tag);
+        console.log('API URL:', API_BASE_URL);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        const response = await fetch(API_BASE_URL, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        console.log('API Response status:', response.status);
+
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
+
         const data = await response.json();
-        let articles = data.data || [];
+        console.log('API Response data:', data);
+
+        if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+            console.warn('No articles found in API response');
+            throw new Error('No articles found in API');
+        }
+
+        console.log('Total articles from API:', data.data.length);
+
+        // Map API data to expected article format
+        const allArticles = data.data.map(item => ({
+            id: item.id,
+            title: item.title,
+            description: item.content ? item.content.replace(/<[^>]+>/g, '').substring(0, 150) : '',
+            content: item.content,
+            image_url: safeGet(item, 'image_url', 'https://picsum.photos/400/250?random=api'),
+            kategori: item.kategori || 'Umum',
+            created_at: item.created_at || item.date || '',
+            date: item.date || item.created_at || ''
+        }));
+
+        // Debug: Log all categories found
+        const allCategories = [...new Set(allArticles.map(a => a.kategori).filter(k => k))];
+        console.log('All categories from API:', allCategories);
+        console.log('Looking for category:', tag);
 
         // Filter articles by category
-        const filteredArticles = articles.filter(article =>
-            article.kategori && article.kategori.toLowerCase() === tag.toLowerCase()
-        );
+        const filteredArticles = allArticles.filter(article => {
+            const articleCategory = article.kategori;
+            const matches = articleCategory && articleCategory.toLowerCase() === tag.toLowerCase();
+            if (matches) {
+                console.log('Found matching article:', article.title, 'Category:', articleCategory);
+            }
+            return matches;
+        });
+
+        console.log('Filtered articles count:', filteredArticles.length);
 
         // Sort by id descending
         filteredArticles.sort((a, b) => parseInt(b.id) - parseInt(a.id));
 
-        // Get unique tags for sidebar
-        const tags = [...new Set(articles.map(a => a.kategori).filter(k => k))];
+        // Get unique tags for sidebar (from all articles)
+        const tags = [...new Set(allArticles.map(a => a.kategori).filter(k => k))];
+        console.log('Available tags for sidebar:', tags);
 
         // Update page title
         document.title = `Kategori: ${tag} - Pondok Informatika News`;
@@ -73,11 +141,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                                 <div class="col-md-6 mb-4">
                                     <div class="card news-card h-100 border-0 shadow-sm">
                                         <a href="article.html?id=${article.id}" class="text-decoration-none">
-                                            <img src="${article.image_url || 'https://via.placeholder.com/400x250/DC3545/FFFFFF?text=News'}"
+                                            <img src="${article.image_url || 'https://picsum.photos/400/250?random=article'}"
                                                  class="card-img-top" alt="${article.title}">
                                             <div class="card-body">
+                                                <h5 class="card-title text-dark fw-bold mb-2">${article.title}</h5>
                                                 <span class="badge bg-primary mb-2">${article.kategori || 'Umum'}</span>
-                                                <h5 class="card-title text-dark fw-bold">${article.title}</h5>
                                                 <p class="card-text text-muted">
                                                     ${article.description ? article.description.substring(0, 100) + '...' : 'Baca selengkapnya...'}
                                                 </p>
